@@ -1,0 +1,63 @@
+name: Android build
+
+# Builds the binaries the Rookery app ships. A tag (v<proot version>-rookery.<n>)
+# publishes them as a release next to the exact source they were built from.
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*-rookery.*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NDK_VERSION: r27c
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install the NDK
+        run: |
+          curl -fsSLo ndk.zip "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip"
+          unzip -q ndk.zip -d "$RUNNER_TEMP"
+          echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: build/build-android.sh
+
+      - name: Package
+        run: |
+          cd out
+          tar -czf "../rookery-proot-jniLibs.tar.gz" jniLibs
+          cd ..
+          git archive --format=tar.gz --prefix=rookery-proot-source/ -o rookery-proot-source.tar.gz HEAD
+          sha256sum rookery-proot-*.tar.gz > SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rookery-proot
+          path: |
+            rookery-proot-*.tar.gz
+            SHA256SUMS
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" --notes-file build/RELEASE_NOTES.md \
+            rookery-proot-*.tar.gz SHA256SUMS
