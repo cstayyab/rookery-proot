@@ -54,8 +54,11 @@ build_abi() {
 		./configure --prefix="$prefix" --disable-rpath --disable-python \
 			--cross-compile --cross-answers=cross-answers.txt
 		make -j"$(nproc)"
+		# talloc.o calls into Samba's libreplace (rep_memset_explicit and
+		# friends), which libtalloc.so carries but talloc*.o alone doesn't.
 		cd bin/default
-		"$AR" rcs "$prefix/lib/libtalloc.a" talloc*.o
+		"$AR" rcs "$prefix/lib/libtalloc.a" talloc*.o \
+			$(find lib/replace -maxdepth 1 -name '*.o')
 		cp "$work/talloc/talloc.h" "$prefix/include/"
 	)
 
