@@ -1,0 +1,3 @@
+# Vendored sources are stored byte for byte as published upstream.
+third_party/** -text
+*.sh text eol=lf
