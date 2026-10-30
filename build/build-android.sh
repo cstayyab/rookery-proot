@@ -17,6 +17,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 API=26
 TALLOC=talloc-2.5.0
 ALL_ABIS="arm64-v8a armeabi-v7a x86_64"
+APP_TMP=/data/data/com.cstayyab.rookery/cache/
 
 : "${ANDROID_NDK_HOME:?set ANDROID_NDK_HOME to an NDK r27c install}"
 TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
@@ -60,8 +61,10 @@ build_abi() {
 
 	# libandroid-shmem (BSD-3-Clause), static. Backs SysV shared memory,
 	# which Android lacks, for programs running under PRoot (X11 MIT-SHM).
+	# Termux's libc defines _PATH_TMP, the NDK's doesn't: point it at the
+	# app's cache, where it keeps the symlinks that share segment keys.
 	cp -r "$ROOT/third_party/libandroid-shmem" "$work/shmem"
-	make -C "$work/shmem" libandroid-shmem.a
+	CFLAGS="-D_PATH_TMP=\\\"$APP_TMP\\\"" make -C "$work/shmem" libandroid-shmem.a
 	cp "$work/shmem/libandroid-shmem.a" "$prefix/lib/"
 	cp "$work/shmem/shm.h" "$prefix/include/sys/shm.h"
 
