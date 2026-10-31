@@ -504,6 +504,43 @@ static int handle_seccomp_event_common(Tracee *tracee)
 		restart_syscall_after_seccomp(tracee);
 		break;
 
+	case PR_faccessat2:
+	{
+		/* Android's app seccomp filter blocks faccessat2, which musl
+		 * uses whenever flags are given: GLib's existence checks
+		 * (F_OK with AT_SYMLINK_NOFOLLOW) then fail for every file.
+		 *
+		 * An existence check that mustn't follow symlinks becomes
+		 * fstatat(dirfd, path, buf, AT_SYMLINK_NOFOLLOW), so a dangling
+		 * symlink still counts as existing.  Anything else becomes
+		 * faccessat, which has no flags: AT_EACCESS changes nothing for
+		 * a tracee whose real and effective IDs match, and permissions
+		 * on a symlink itself mean nothing on Linux.  */
+		word_t flags = peek_reg(tracee, CURRENT, SYSARG_4);
+
+		if (peek_reg(tracee, CURRENT, SYSARG_3) == F_OK && (flags & AT_SYMLINK_NOFOLLOW) != 0) {
+			/* Large enough for any architecture's struct stat.  */
+			word_t buffer = alloc_mem(tracee, 256);
+			if (buffer == 0) {
+				set_result_after_seccomp(tracee, -EFAULT);
+				break;
+			}
+#if defined(ARCH_X86_64)
+			set_sysnum(tracee, PR_newfstatat);
+#else
+			set_sysnum(tracee, PR_fstatat64);
+#endif
+			poke_reg(tracee, SYSARG_3, buffer);
+			poke_reg(tracee, SYSARG_4, AT_SYMLINK_NOFOLLOW);
+		}
+		else {
+			set_sysnum(tracee, PR_faccessat);
+			poke_reg(tracee, SYSARG_4, 0);
+		}
+		restart_syscall_after_seccomp(tracee);
+		break;
+	}
+
 	case PR_mkdir:
 		set_sysnum(tracee, PR_mkdirat);
 		poke_reg(tracee, SYSARG_3, peek_reg(tracee, CURRENT, SYSARG_2));
